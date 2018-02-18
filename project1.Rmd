@@ -1,0 +1,100 @@
+---
+output: html_document
+---
+
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<link rel="stylesheet" href="./custom.css">
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(plyr)
+library(knitr)
+```
+
+<div class='jumbotron'>
+  <h2 class='display-3 text-uppercase'>Project 1</h2>
+  <h4 class='right text-uppercase'>By Brian Weinfeld</h4>
+  <div class='clearfix'></div>
+  <h5 class='right text-uppercase'>February 18, 2018</h5>
+</div>
+
+<div class='page-header text-uppercase'>
+  <h3>Chess Ranking Manipulations</h3>
+</div>
+
+<div class='well'>
+I began by reading in the data. I decided to use read.fwf which is designed to be used with files with arbitrary formatting but where every line is the same width and all the information is in the same position on each line. The resulting data frame is a bit messy but can be cleaned up quite easily.
+</div>
+
+```{r, warning=FALSE}
+con <- file('https://raw.githubusercontent.com/brian-cuny/607project1/master/tournamentinfo.txt', open='r')
+raw.data <- read.fwf(con, widths=c(6, 2, 32, 1, 5, 43), skip=4, stringsAsFactors=FALSE) 
+close(con)
+raw.data[which(1:nrow(raw.data) %% 3 != 0), ] %>% head() %>% kable()
+```
+
+<div class='well'>
+I created two data frames, each one holding one line of information about each player. I ignored the line with transition '-' symbols. The columns labled with a 'd' stand for dummy and are immediately removed. I added the number row to the second data frame to have a common column upon which to join the data frames.
+</div>
+
+```{r}
+players.row.1 <- raw.data[seq(1, nrow(raw.data), 3), ] %>% 
+  setNames(c('number', 'd1', 'name', 'd2', 'points', 'opponents')) %>% 
+  select(-d1, -d2)
+players.row.2 <- raw.data[seq(2, nrow(raw.data), 3), ] %>% 
+  setNames(c('location', 'd1', 'pre', 'd2', 'd3', 'd4')) %>% 
+  select(-d1, -d2, -d3, -d4) %>% 
+  mutate(number = players.row.1$number)
+players.row.1 %>% head() %>% kable()
+players.row.2 %>% head() %>% kable()
+```
+
+<div class='well'>
+I combined the data frames into one and rearranged the columns to match the intended output.
+</div>
+
+```{r}
+players.combined <- left_join(players.row.1, players.row.2, by='number') %>% 
+  subset(select=c(2, 5, 3, 6, 4))
+players.combined %>% head() %>% kable()
+```
+
+<div class='well'>
+Two columns need to be further modified from the raw data contained inside of them. 
+</br>
+The 'pre' column is easiest as the data needed is always in the same position. 
+</br>
+The 'opponents' column needs more work. I used 'str_extract_all' to remove all the numbers and then change them to numerics. At this moment I had a vector of numerics representing the opponents played by each player. From there I used 'mapvalues' to swap out the opponents number and swap in their pre score. Finally, I found the mean of those values and rounded it to the nearest whole number.
+</div>
+
+```{r, warning=FALSE, message=FALSE}
+players.combined$pre <- players.combined$pre %>% 
+  str_sub(15, 18) %>% 
+  as.numeric()
+players.combined$opponents <- players.combined$opponents %>% 
+  lapply(. %>% 
+           str_extract_all('\\d+') %>% 
+           unlist() %>% 
+           as.numeric() %>% 
+           mapvalues(1:nrow(players.combined), players.combined$pre) %>% 
+           mean() %>% 
+           round(digits=0)
+         )
+```
+
+<div class='well'>
+There is a last little bit of munging that needs to be done. The names, for example, have spaces at the end of it and the opponents column is of an unknown type. I decided to clean up all columns for consistency and then wrote the solution to a csv file. It is ready to be imported into an SQL table.
+</div>
+
+```{r}
+players.combined[, 3:5] <- players.combined[, 3:5] %>% 
+  sapply(., as.numeric) 
+players.combined[, 1:2] <- players.combined[, 1:2] %>% 
+  sapply(., str_trim) 
+write.csv(players.combined, file='ChessData.csv')
+players.combined %>% head() %>% kable()
+```
+
+<div class='alert alert-success'>
+The data has been successfully processed as described and written to a csv file. It is also ready for further processing in this R file if needed. I actually wrote out a seperate solution first that relied more heavily on regular expressions but I ended up liking this answer better. The regular expressions needed to extract each piece of information grew to an unwieldy length. I still use regular expressions in this solution, just when they were the single best tool to accomplish the task. I also made use of 'str_trim' and 'str_sub'.
+</div>
