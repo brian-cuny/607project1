@@ -9,6 +9,7 @@ output: html_document
 library(tidyverse)
 library(plyr)
 library(knitr)
+library(magrittr)
 ```
 
 <div class='jumbotron'>
@@ -44,7 +45,7 @@ players.row.1 <- raw.data[seq(1, nrow(raw.data), 3), ] %>%
 players.row.2 <- raw.data[seq(2, nrow(raw.data), 3), ] %>% 
   setNames(c('location', 'd1', 'pre', 'd2', 'd3', 'd4')) %>% 
   select(-d1, -d2, -d3, -d4) %>% 
-  mutate(number = players.row.1$number)
+  mutate(number=players.row.1$number)
 players.row.1 %>% head() %>% kable()
 players.row.2 %>% head() %>% kable()
 ```
@@ -55,44 +56,44 @@ I combined the data frames into one and rearranged the columns to match the inte
 
 ```{r}
 players.combined <- left_join(players.row.1, players.row.2, by='number') %>% 
-  subset(select=c(2, 5, 3, 6, 4))
+  subset(select=c(2, 5, 3, 6, 4)) %>%
+  map_df(str_trim)
 players.combined %>% head() %>% kable()
 ```
 
 <div class='well'>
-Two columns need to be further modified from the raw data contained inside of them. 
+Three columns need to be further modified from the raw data contained inside of them. 
 </br>
-The 'pre' column is easiest as the data needed is always in the same position. 
+The 'points' column needs to be changed to a numeric.
+</br>
+The 'pre' column has the specific points pulled and changed to a numeric. 
 </br>
 The 'opponents' column needs more work. I used 'str_extract_all' to remove all the numbers and then change them to numerics. At this moment I had a vector of numerics representing the opponents played by each player. From there I used 'mapvalues' to swap out the opponents number and swap in their pre score. Finally, I found the mean of those values and rounded it to the nearest whole number.
 </div>
 
 ```{r, warning=FALSE, message=FALSE}
-players.combined$pre <- players.combined$pre %>% 
+players.combined$points %<>% 
+  as.numeric()
+players.combined$pre %<>% 
   str_sub(15, 18) %>% 
   as.numeric()
-players.combined$opponents <- players.combined$opponents %>% 
-  lapply(. %>% 
-           str_extract_all('\\d+') %>% 
-           unlist() %>% 
-           as.numeric() %>% 
-           mapvalues(1:nrow(players.combined), players.combined$pre) %>% 
-           mean() %>% 
-           round(digits=0)
+players.combined$opponents %<>% 
+  map_dbl(. %>% str_extract_all('\\d+') %>%
+            unlist() %>% 
+            as.numeric() %>% 
+            mapvalues(seq_along(players.combined$pre), players.combined$pre) %>% 
+            mean() %>% 
+            round()
          )
+players.combined %>% head() %>% kable()
 ```
 
 <div class='well'>
-There is a last little bit of munging that needs to be done. The names, for example, have spaces at the end of it and the opponents column is of an unknown type. I decided to clean up all columns for consistency and then wrote the solution to a csv file. It is ready to be imported into an SQL table.
+Finally, I wrote the wrote the file to a csv. It is ready to be read into an sql table.
 </div>
 
 ```{r}
-players.combined[, 3:5] <- players.combined[, 3:5] %>% 
-  sapply(., as.numeric) 
-players.combined[, 1:2] <- players.combined[, 1:2] %>% 
-  sapply(., str_trim) 
 write.csv(players.combined, file='ChessData.csv')
-players.combined %>% head() %>% kable()
 ```
 
 <div class='alert alert-success'>
